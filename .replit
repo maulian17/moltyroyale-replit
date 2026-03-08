@@ -3,11 +3,11 @@
 language = "nodejs"
 
 # Run both backend server and frontend dev server
-run = "npx concurrently \"npm run server\" \"npx vite\""
+run = "npx concurrently \"npm run server\" \"npm run dev\""
 
 # Install dependencies
 [nix]
-channel = "stable-23_11"
+channel = "stable-24_05"
 
 [env]
 # Default environment variables
