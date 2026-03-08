@@ -1,0 +1,15 @@
+# Replit Configuration for Molty Royale Dashboard
+
+language = "nodejs"
+
+# Run both backend server and frontend dev server
+run = "npm run start"
+
+# Install dependencies
+[nix]
+channel = "stable-23_11"
+
+[env]
+# Default environment variables
+DASHBOARD_PORT = "3000"
+NODE_ENV = "production"
