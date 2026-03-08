@@ -3,7 +3,7 @@
 language = "nodejs"
 
 # Run both backend server and frontend dev server
-run = "npm run start"
+run = "npx concurrently \"npm run server\" \"npm run dev\""
 
 # Install dependencies
 [nix]
