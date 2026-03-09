@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
-const PORT = process.env.DASHBOARD_PORT || 3000;
+const PORT = process.env.PORT || process.env.DASHBOARD_PORT || 3000;
 const AGENTS_DIR = path.join(__dirname, 'agents');
 const CONFIG_PATH = path.join(__dirname, 'dashboard_config.json');
 
