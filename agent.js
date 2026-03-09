@@ -386,12 +386,18 @@ class MoltyAPI {
                     signal: controller.signal,
                 });
 
-                clearTimeout(timeoutId);
+                if (response.body && typeof response.body.on === 'function') {
+                    response.body.on('error', (err) => {
+                        // Catch unhandled stream errors on abort
+                    });
+                }
 
                 let data;
                 try {
                     data = await response.json();
+                    clearTimeout(timeoutId);
                 } catch (e) {
+                    clearTimeout(timeoutId);
                     this.lastRequestTransient = true;
                     this.lastRequestError = "EMPTY_RESPONSE";
                     this.lastRequestPath = path;
@@ -475,12 +481,18 @@ class MoltyAPI {
                     signal: controller.signal,
                 });
 
-                clearTimeout(timeoutId);
+                if (response.body && typeof response.body.on === 'function') {
+                    response.body.on('error', (err) => {
+                        // Catch unhandled stream errors on abort
+                    });
+                }
 
                 let data;
                 try {
                     data = await response.json();
+                    clearTimeout(timeoutId);
                 } catch (e) {
+                    clearTimeout(timeoutId);
                     this.lastRequestTransient = true;
                     this.lastRequestError = "EMPTY_RESPONSE";
                     this.lastRequestPath = path;
@@ -952,7 +964,7 @@ class AgentBrain {
 
             const terrain = vrInfo?.terrain || 'plains';
             const terrainScore = TERRAIN_SCORE[terrain] || 2;
-            const enemyPenalty = hostileCount * 22;
+            let enemyPenalty = hostileCount * 22;
             const rangedPenalty = rangedCount * 14;
             if (safestVisibleEnemyCount === 0 && hostileCount > 0) enemyPenalty += 10;
             const recentPenalty = this.recentRegions.includes(rid) ? 12 : 0;
@@ -1441,7 +1453,7 @@ class AgentBrain {
 
             const recentPenalty = this.recentRegions.includes(rid) ? -16 : 0;
             const visitedBias = this.visitedRegions.has(rid) ? -4 : 5;
-            const enemyPenalty = (-24 * hostileCount) + (-14 * rangedCount);
+            let enemyPenalty = (-24 * hostileCount) + (-14 * rangedCount);
             if (hostileCount >= 2) enemyPenalty -= 10;
             if (safestVisibleEnemyCount === 0 && hostileCount > 0) enemyPenalty -= 8;
 
