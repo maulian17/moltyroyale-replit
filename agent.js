@@ -824,7 +824,7 @@ class AgentBrain {
         return false;
     }
 
-    _itemValue(item, currentWeaponBonus = 0, hpPct = 100) {
+    _itemValue(item, currentWeaponBonus = 0, hpPct = 100, inventory = []) {
         if (!item) return -999;
 
         const cat = item.category || '';
@@ -837,8 +837,19 @@ class AgentBrain {
         if (cat === "weapon") {
             const bonus = item.atkBonus ?? WEAPON_PRIORITY[name] ?? 0;
             const upgrade = bonus - currentWeaponBonus;
+            
+            // Check if we already have this exact weapon or a better one in inventory
+            for (const invItem of inventory) {
+                if (invItem.category === "weapon") {
+                    const invBonus = invItem.atkBonus ?? WEAPON_PRIORITY[invItem.name || ''] ?? 0;
+                    if (invItem.name === name || invBonus >= bonus) {
+                        return -500; // We already have it or a better one, don't pick it up
+                    }
+                }
+            }
+
             if (upgrade > 0) return 70 + (upgrade * 4);
-            return 10 + bonus;
+            return -500; // Don't pick up worse or equal weapons
         }
 
         if (cat === "utility") {
@@ -855,6 +866,10 @@ class AgentBrain {
         }
 
         if (cat === "recovery") {
+            // Count existing recovery items to avoid hoarding too many
+            const recoveryCount = inventory.filter(i => i.category === "recovery").length;
+            if (recoveryCount >= 4) return -100; // Tas sudah penuh heal
+
             let base = { "medkit": 45, "Bandage": 28, "Emergency rations": 18 }[name] || 15;
             if (hpPct < 35) base += 15;
             else if (hpPct > 85 && name === "medkit") base -= 8;
@@ -879,7 +894,8 @@ class AgentBrain {
 
             if (this._shouldSkipUtilityPickup(item, inventory)) continue;
 
-            let score = this._itemValue(item, weaponBonus, hpPct);
+            // Kita parsing `inventory` agar method _itemValue tahu isi tas
+            let score = this._itemValue(item, weaponBonus, hpPct, inventory);
             if (groundCount > 1) {
                 score += 4;
                 if (item.category === "weapon") score += 3;
