@@ -3,7 +3,7 @@
 language = "nodejs"
 
 # Build frontend and run production server
-run = "npm run build && npm run start"
+run = "npm install && npm run build && npm run start"
 
 # Install dependencies
 [nix]
