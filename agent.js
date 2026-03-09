@@ -13,7 +13,6 @@
  */
 
 import dotenv from 'dotenv';
-import fetch from 'node-fetch';
 import readline from 'readline';
 import { fileURLToPath } from 'url';
 
@@ -386,12 +385,6 @@ class MoltyAPI {
                     signal: controller.signal,
                 });
 
-                if (response.body && typeof response.body.on === 'function') {
-                    response.body.on('error', (err) => {
-                        // Catch unhandled stream errors on abort
-                    });
-                }
-
                 let data;
                 try {
                     data = await response.json();
@@ -480,12 +473,6 @@ class MoltyAPI {
                     body: jsonData ? JSON.stringify(jsonData) : null,
                     signal: controller.signal,
                 });
-
-                if (response.body && typeof response.body.on === 'function') {
-                    response.body.on('error', (err) => {
-                        // Catch unhandled stream errors on abort
-                    });
-                }
 
                 let data;
                 try {
