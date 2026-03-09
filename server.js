@@ -623,8 +623,8 @@ async function startServer() {
         console.log(`  - ${name}: API_KEY=${agent.apiKeyPresent ? '✅' : '❌'}, Mode=${agent.mode}`);
     }
     console.log('');
-    
-    const host = process.env.REPL_ID ? '0.0.0.0' : 'localhost';
+    // For Replit, we MUST listen on 0.0.0.0 so the proxy can pick it up
+    const host = '0.0.0.0';
     
     console.log(`\nDashboard: http://${host}:${PORT}`);
     console.log(`(API and Static Files served on port ${PORT})`);
