@@ -2735,7 +2735,7 @@ async function gameLoop(api, brain) {
             const [result, errorCode] = await api._requestOnce(
                 "POST",
                 `/games/${GAME_ID}/agents/${AGENT_ID}/action`,
-                { action, ...(thought ? { thought } : {}) },
+                { ...action, ...(thought ? { thought } : {}) },
                 ACTION_POST_RETRIES,
                 [ACTION_POST_CONNECT_TIMEOUT, ACTION_POST_READ_TIMEOUT]
             );
