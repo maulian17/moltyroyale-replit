@@ -13,4 +13,3 @@ channel = "stable-24_05"
 # Default environment variables
 DASHBOARD_PORT = "3000"
 NODE_ENV = "production"
-
