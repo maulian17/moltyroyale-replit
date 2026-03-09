@@ -31,7 +31,7 @@ let GAME_ID = process.env.GAME_ID || "";
 let AGENT_ID = process.env.AGENT_ID || "";
 
 // Team mode allies (friendly-fire off)
-const DEFAULT_TEAM_ALLIES = new Set(["KiwKiw", "KowKow", "KewKew", "PremanPasar", "BudakSajak"]);
+const DEFAULT_TEAM_ALLIES = new Set(["KiwKiw", "KowKow", "KewKew", "PremanPasar", "BudakSajak", "PremanGang", "PremanKampung", "PremanKomplek", "PremanKota", "PremanStasiun"]);
 const ALLY_NAMES_ENV = (process.env.ALLY_NAMES || "").trim();
 const TEAM_ALLIES = ALLY_NAMES_ENV
     ? new Set(ALLY_NAMES_ENV.split(",").map(n => n.trim()).filter(n => n))
@@ -716,9 +716,9 @@ class AgentBrain {
     }
 
     _countEnemiesInRegion(agents, regionId) {
-        return agents.filter(a => 
-            a.isAlive !== false && 
-            a.regionId === regionId && 
+        return agents.filter(a =>
+            a.isAlive !== false &&
+            a.regionId === regionId &&
             !this._isAllyAgent(a)
         ).length;
     }
@@ -1005,7 +1005,7 @@ class AgentBrain {
 
     _regionConnectionDegree(region, rid, visibleRegions = null) {
         if (!region || !rid) return 0;
-        
+
         const vrInfo = typeof region === 'object' ? region : this._getVisibleRegionInfo(rid, visibleRegions);
         if (vrInfo && typeof vrInfo === 'object') {
             const connections = vrInfo.connections || [];
@@ -1016,7 +1016,7 @@ class AgentBrain {
 
     _regionCenterBias(region, rid, visibleRegions = null) {
         if (!region || !rid) return 0.0;
-        
+
         const vrInfo = typeof region === 'object' ? region : this._getVisibleRegionInfo(rid, visibleRegions);
         const degree = this._regionConnectionDegree(region, rid, visibleRegions);
         if (degree <= 0) return 0.0;
@@ -1287,9 +1287,9 @@ class AgentBrain {
             const vrInfo = typeof r === 'object' ? r : this._getVisibleRegionInfo(rid, visibleRegions);
             if (vrInfo?.isDeathZone || this.knownDeathZones.has(rid)) continue;
 
-            const hostiles = (visibleAgents || []).filter(a => 
-                a.isAlive !== false && 
-                a.regionId === rid && 
+            const hostiles = (visibleAgents || []).filter(a =>
+                a.isAlive !== false &&
+                a.regionId === rid &&
                 !this._isAllyAgent(a)
             );
             const hostileCount = hostiles.length;
@@ -1342,7 +1342,7 @@ class AgentBrain {
             const vrInfo = typeof r === 'object' ? r : this._getVisibleRegionInfo(rid, visibleRegions);
             if (vrInfo?.isDeathZone || this.knownDeathZones.has(rid)) continue;
 
-            const hostiles = (visibleAgents || []).filter(a => 
+            const hostiles = (visibleAgents || []).filter(a =>
                 a.isAlive !== false && a.regionId === rid && !this._isAllyAgent(a)
             );
             if (hostiles.length !== 1) continue;
@@ -1573,7 +1573,7 @@ class AgentBrain {
         }
 
         const nearbyRegions = new Set([regionId, ...connected.map(c => typeof c === 'object' ? (c.id || '') : c).filter(Boolean)]);
-        const nearbyHostiles = (allVisibleAgents || []).filter(a => 
+        const nearbyHostiles = (allVisibleAgents || []).filter(a =>
             a.isAlive !== false && nearbyRegions.has(a.regionId || '')
         ).length;
 
@@ -2149,10 +2149,10 @@ class AgentBrain {
 async function saveEnv(key, value, agentName = null) {
     const fs = await import('fs');
     const path = await import('path');
-    
+
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    
+
     // Save to agents folder if agentName provided, otherwise root .env
     let envPath;
     if (agentName) {
@@ -2167,17 +2167,17 @@ async function saveEnv(key, value, agentName = null) {
     } else {
         envPath = path.resolve(__dirname, ".env");
     }
-    
+
     let lines = [];
     let found = false;
-    
+
     try {
         const content = fs.readFileSync(envPath, 'utf-8');
         lines = content.split('\n');
     } catch (e) {
         // File doesn't exist yet
     }
-    
+
     for (let i = 0; i < lines.length; i++) {
         if (lines[i].trim().startsWith(`${key}=`)) {
             lines[i] = `${key}=${value}`;
@@ -2185,43 +2185,43 @@ async function saveEnv(key, value, agentName = null) {
             break;
         }
     }
-    
+
     if (!found) {
         lines.push(`${key}=${value}`);
     }
-    
+
     fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf-8');
 }
 
 async function checkAndUpdateWallet(api) {
     logInfo("🔐 Checking wallet address...");
-    
+
     const acc = await api.getAccount();
     if (!acc) {
         logError("Failed to get account for wallet check");
         return false;
     }
-    
+
     const walletAddress = acc.walletAddress || acc.wallet_address || null;
-    
+
     // Check if wallet is set
     if (!walletAddress) {
         logWarning("⚠️  Wallet address not set!");
-        
+
         // Try to get from env or prompt
         const walletToSet = WALLET_ADDRESS || await promptForWallet();
-        
+
         if (!walletToSet || !isValidEthereumAddress(walletToSet)) {
             logError("Invalid or no wallet address provided. Rewards will not be received!");
             logWarning("Set WALLET_ADDRESS in .env or update via:");
             logWarning(`curl -X PUT ${BASE_URL}/accounts/wallet -H "Content-Type: application/json" -H "X-API-Key: ${API_KEY}" -d '{"wallet_address": "0xYourAddress"}'`);
             return false;
         }
-        
+
         // Update wallet
         logInfo(`Updating wallet address: ${walletToSet}`);
         const result = await api._request("PUT", "/accounts/wallet", { wallet_address: walletToSet });
-        
+
         if (result) {
             logSuccess(`✅ Wallet address updated: ${walletToSet}`);
             await saveEnv("WALLET_ADDRESS", walletToSet, AGENT_NAME);
@@ -2255,10 +2255,10 @@ async function setupAccount(api) {
         const acc = await api.getAccount();
         if (acc) {
             logSuccess(`Akun: ${acc.name} | Wins: ${acc.totalWins || 0} | Games: ${acc.totalGames || 0}`);
-            
+
             // Check wallet address (Heartbeat requirement)
             await checkAndUpdateWallet(api);
-            
+
             return true;
         }
         if (api.lastRequestTransient) {
@@ -2280,10 +2280,10 @@ async function setupAccount(api) {
         logInfo(`Verification Code: ${acc.verificationCode}`);
         await saveEnv("API_KEY", apiKey, AGENT_NAME);
         logSuccess("API Key disimpan ke .env");
-        
+
         // Check wallet for new account
         await checkAndUpdateWallet(api);
-        
+
         return true;
     } else {
         if (api.lastRequestTransient) {
@@ -2329,7 +2329,7 @@ async function findOrCreateGame(api) {
         for (const g of games) {
             const entryType = getGameEntryType(g);
             const gameId = g.id || "";
-            
+
             if (blockedIds.has(gameId)) continue;
             if (entryType === "paid") {
                 blockedIds.add(gameId);
@@ -2339,7 +2339,7 @@ async function findOrCreateGame(api) {
                 blockedIds.add(gameId);
             }
         }
-        
+
         if (freeGames.length > 0) {
             const game = freeGames[0];
             GAME_ID = game.id || "";
@@ -2349,7 +2349,7 @@ async function findOrCreateGame(api) {
             return true;
         }
     }
-    
+
     if (!ALLOW_CREATE_GAME_FALLBACK) {
         return false;
     }
@@ -2363,7 +2363,7 @@ async function findOrCreateGame(api) {
         api._fallbackGames = [];
         return true;
     }
-    
+
     return false;
 }
 
@@ -2445,7 +2445,7 @@ async function registerAgent(api) {
 
 async function tryRegister(api, gameId) {
     const blockedIds = getBlockedGameIds(api);
-    
+
     logInfo(`Mendaftarkan agent '${AGENT_NAME}' ke game ${gameId}...`);
     const [agent, errorCode] = await api._requestOnce(
         "POST",
@@ -2454,7 +2454,7 @@ async function tryRegister(api, gameId) {
         ACTION_POST_RETRIES,
         [ACTION_POST_CONNECT_TIMEOUT, ACTION_POST_READ_TIMEOUT]
     );
-    
+
     if (agent) {
         AGENT_ID = agent.id || "";
         logSuccess(`Agent terdaftar! ID: ${AGENT_ID}`);
@@ -2462,13 +2462,13 @@ async function tryRegister(api, gameId) {
         await saveEnv("AGENT_ID", AGENT_ID, AGENT_NAME);
         return true;
     }
-    
+
     if (SKIPPABLE_ERRORS.has(errorCode)) {
         blockedIds.add(gameId);
         logWarning(`Game ${gameId} tidak bisa dimasuki (${errorCode}), coba game lain...`);
         return false;
     }
-    
+
     logError(`Gagal register di game ${gameId}: ${errorCode}`);
     return false;
 }
@@ -2476,7 +2476,7 @@ async function tryRegister(api, gameId) {
 async function waitForGameStart(api) {
     logInfo("Menunggu game dimulai...");
     logInfo("(Game dimulai otomatis setelah 50+ agent, atau penuh 100 agent)");
-    
+
     while (true) {
         const state = await api.getState(GAME_ID, AGENT_ID);
         if (state) {
@@ -2489,7 +2489,7 @@ async function waitForGameStart(api) {
                 return false;
             }
         }
-        
+
         const info = await api.getGameInfo(GAME_ID);
         if (info) {
             const status = info.status || "waiting";
@@ -2500,7 +2500,7 @@ async function waitForGameStart(api) {
                 return true;
             }
         }
-        
+
         await sleep(POLL_INTERVAL * 1000);
     }
 }
@@ -2517,13 +2517,13 @@ function printStatus(me, region, aliveCount = null, totalCount = null) {
     const terrain = region.terrain || "???";
     const weather = region.weather || "???";
     const isDz = region.isDeathZone ? "☠️DZ" : "";
-    
+
     const barFilled = maxHp > 0 ? Math.floor(hp / maxHp * 20) : 0;
     const hpBar = '█'.repeat(barFilled) + '░'.repeat(20 - barFilled);
-    
+
     const aliveStr = aliveCount !== null ? `| Alive: ${aliveCount}/${totalCount}` :
-                     totalCount !== null ? `| Agents: ${totalCount}` : "";
-    
+        totalCount !== null ? `| Agents: ${totalCount}` : "";
+
     console.log(`\n${COLORS.cyan}${'═'.repeat(60)}`);
     console.log(`  ${COLORS.white}HP [${hpBar}] ${hp}/${maxHp}  |  EP: ${ep}/${maxEp}  |  Kills: ${kills} ${aliveStr}`);
     console.log(`  ${COLORS.white}Weapon: ${wName}  |  Region: ${rName} (${terrain}) ${weather} ${isDz}`);
@@ -2539,75 +2539,75 @@ async function confirmActionSuccessQuick(api, gameId, agentId, action, preState)
             1,
             [ACTION_CONFIRM_CONNECT_TIMEOUT, ACTION_CONFIRM_READ_TIMEOUT]
         );
-        
+
         if (err || !state) return false;
-        
+
         const me = state.self || {};
         const preMe = (preState || {}).self || {};
         const actionType = action.type || "";
-        
+
         const findById = (items, itemId) => {
             for (const item of (items || [])) {
                 if (item.id === itemId) return item;
             }
             return null;
         };
-        
+
         if (actionType === "move" || actionType === "flee") {
             const targetRegionId = action.targetRegionId || action.regionId;
             return !!targetRegionId && me.regionId === targetRegionId;
         }
-        
+
         if (actionType === "pickup") {
             const itemId = action.itemId;
             if (!itemId) return false;
             const inventory = me.inventory || [];
             return inventory.some(it => it.id === itemId);
         }
-        
+
         if (actionType === "use_item") {
             const itemId = action.itemId;
             if (!itemId) return false;
             const inventory = me.inventory || [];
             return !inventory.some(it => it.id === itemId);
         }
-        
+
         if (actionType === "attack") {
             const targetId = action.targetId;
             const targetType = String(action.targetType || '').trim().toLowerCase();
             if (!targetId || !['agent', 'monster'].includes(targetType)) return false;
-            
+
             const preKills = preMe.kills || 0;
             const postKills = me.kills || 0;
             if (postKills > preKills) return true;
-            
-            const preTargets = targetType === 'agent' ? 
-                ((preState || {}).visibleAgents || []) : 
+
+            const preTargets = targetType === 'agent' ?
+                ((preState || {}).visibleAgents || []) :
                 ((preState || {}).visibleMonsters || []);
             const postTargets = targetType === 'agent' ?
                 (state.visibleAgents || []) :
                 (state.visibleMonsters || []);
-            
+
             const preTarget = findById(preTargets, targetId);
             if (!preTarget) return false;
-            
+
             const postTarget = findById(postTargets, targetId);
             const preHp = preTarget.hp || 0;
-            
+
             const myAtk = preMe.atk || 0;
             const myWeaponBonus = getWeaponBonus(preMe.equippedWeapon);
             const targetDef = preTarget.def || 0;
             const estDamage = Math.max(1.0, calcDamage(myAtk, myWeaponBonus, targetDef));
-            
+
             if (postTarget) {
                 const postHp = postTarget.hp ?? preHp;
                 return postHp < preHp;
             }
-            
+
             if (preHp <= estDamage + 1e-9) return true;
             return false;
         }
-        
+
         return false;
     } catch (e) {
         return false;
@@ -2703,7 +2703,7 @@ async function gameLoop(api, brain) {
                 const agentStrs = visibleAgents.map(a => `${a.name || '?'}(HP:${a.hp ?? '?'})`);
                 logInfo(`👥 Agents terlihat: ${agentStrs.join(', ')}`);
             }
-            
+
             // Log death zone warning
             if (pendingDz.length > 0 && Math.random() < 0.2) {
                 logWarning(`⚠️ Death zone: ${pendingDz.map(dz => dz.name || '?').join(', ')}`);
@@ -2711,7 +2711,7 @@ async function gameLoop(api, brain) {
 
             // Make decision
             const decision = brain.decide(state);
-            
+
             if (decision === null) {
                 const remaining = remainingGroup1Cooldown(brain.lastActionTime);
                 if (remaining > 0 && remaining < 5) {
@@ -2722,15 +2722,15 @@ async function gameLoop(api, brain) {
                 }
                 continue;
             }
-            
+
             const [action, thought, desc, commitMeta] = decision;
-            
+
             // Log only important actions
             const importantActions = ['attack', 'move', 'use_item', 'interact'];
             if (importantActions.includes(action.type)) {
                 logAction(`${action.type === 'attack' ? '⚔️' : action.type === 'move' ? '🚶' : action.type === 'use_item' ? '🧪' : '🏪'} ${desc}`);
             }
-            
+
             // Execute action
             const actionStartedAt = Date.now() / 1000;
             const [result, errorCode] = await api._requestOnce(
@@ -2740,12 +2740,12 @@ async function gameLoop(api, brain) {
                 ACTION_POST_RETRIES,
                 [ACTION_POST_CONNECT_TIMEOUT, ACTION_POST_READ_TIMEOUT]
             );
-            
+
             const actionType = action.type || "";
             const GROUP1_ACTIONS = new Set(["move", "explore", "attack", "use_item", "interact", "rest"]);
             const isGroup1 = GROUP1_ACTIONS.has(actionType);
             const transientActionError = ["EMPTY_RESPONSE", "REQUEST_TIMEOUT", "REQUEST_FAILED"].includes(errorCode);
-            
+
             if (errorCode === null) {
                 // Log only important successful actions
                 if (['attack', 'use_item'].includes(actionType)) {
@@ -2783,7 +2783,7 @@ async function gameLoop(api, brain) {
                     await sleep(1000);
                 }
             }
-            
+
         } catch (error) {
             if (error.message?.includes('abort') || error.name === 'AbortError') {
                 logWarning("\n⛔ Dihentikan oleh user (Ctrl+C)");
@@ -2793,7 +2793,7 @@ async function gameLoop(api, brain) {
             await sleep(5000);
         }
     }
-    
+
     return gameResult;
 }
 
@@ -2817,18 +2817,18 @@ ${COLORS.cyan}+------------------------------------------------------------+
 +------------------------------------------------------------+${COLORS.reset}
         `);
     }
-    
+
     const api = new MoltyAPI(BASE_URL, API_KEY);
     logInfo(`Mode aggro: ${effectiveAggroMode}`);
     logInfo(`Mode ranged targeting: ${effectiveRangedTargetMode}`);
-    
+
     // Setup account
     while (!await setupAccount(api)) {
         const waitS = api.lastRequestTransient ? 15 : 10;
         logWarning(`Setup akun gagal. Retry dalam ${waitS} detik...`);
         await sleep(waitS * 1000);
     }
-    
+
     // Session stats
     let sessionWins = 0;
     let sessionLosses = 0;

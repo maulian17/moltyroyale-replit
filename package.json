@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev:frontend": "vite",
+    "dev:backend": "node server.js",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "vite build",
-    "preview": "vite preview",
-    "server": "node server.js",
-    "start": "concurrently \"npm run server\" \"npm run dev\""
+    "start": "node server.js"
   },
   "dependencies": {
     "clsx": "^2.1.0",

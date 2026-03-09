@@ -592,6 +592,19 @@ app.post('/api/config', (req, res) => {
     res.json({ success });
 });
 
+// Serve static React files (Frontend)
+const distPath = path.join(__dirname, 'dist');
+if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+        if (!req.path.startsWith('/api/')) {
+            res.sendFile(path.join(distPath, 'index.html'));
+        } else {
+            res.status(404).json({ error: 'API endpoint not found' });
+        }
+    });
+}
+
 // WebSocket
 wss.on('connection', (ws) => {
     console.log('WebSocket client connected');
@@ -613,8 +626,8 @@ async function startServer() {
     
     const host = process.env.REPL_ID ? '0.0.0.0' : 'localhost';
     
-    console.log(`\nBackend: http://${host}:${PORT}`);
-    console.log(`Frontend: http://localhost:5173 (Vite dev server)`);
+    console.log(`\nDashboard: http://${host}:${PORT}`);
+    console.log(`(API and Static Files served on port ${PORT})`);
     console.log('\nPress Ctrl+C to stop\n');
 
     server.listen(PORT, host, () => {
