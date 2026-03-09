@@ -14,6 +14,6 @@ channel = "stable-24_05"
 DASHBOARD_PORT = "3000"
 NODE_ENV = "production"
 
-[ports]
+[[ports]]
 localPort = 3000
 externalPort = 80
