@@ -866,6 +866,12 @@ class AgentBrain {
         }
 
         if (cat === "recovery") {
+            // Batasi recovery max 4 buah jika di fase EARLY atau MID (this.gamePhase bukan ENDGAME)
+            if (this.gamePhase && this.gamePhase !== "ENDGAME") {
+                const recoveryCount = inventory.filter(i => i.category === "recovery").length;
+                if (recoveryCount >= 4) return -100; // Tas cukup berisi healing untuk early/mid
+            }
+
             let base = { "medkit": 45, "Bandage": 28, "Emergency rations": 18 }[name] || 15;
             if (hpPct < 35) base += 15;
             else if (hpPct > 85 && name === "medkit") base -= 8;
