@@ -837,7 +837,7 @@ class AgentBrain {
         if (cat === "weapon") {
             const bonus = item.atkBonus ?? WEAPON_PRIORITY[name] ?? 0;
             const upgrade = bonus - currentWeaponBonus;
-            
+
             // Cek apakah ada senjata dengan nama sama atau yang sama kuatnya/lebih kuat
             for (const invItem of (inventory || [])) {
                 if (invItem.category === "weapon") {
@@ -2624,6 +2624,13 @@ async function confirmActionSuccessQuick(api, gameId, agentId, action, preState)
             return false;
         }
 
+        if (actionType === "explore") {
+            // Explore costs 1 EP — if EP decreased, action was executed
+            const preEp = preMe.ep ?? 0;
+            const postEp = me.ep ?? 0;
+            return postEp < preEp;
+        }
+
         return false;
     } catch (e) {
         return false;
@@ -2642,6 +2649,8 @@ async function gameLoop(api, brain) {
     let lastGameInfoCheck = 0;
     let cachedTotalCount = null;
     let lastStatusPrint = 0;
+    let lastCommittedMoveFromRegion = null; // Region sebelum move
+    let lastCommittedMoveToRegion = null;   // Region tujuan move
 
     while (true) {
         try {
@@ -2685,6 +2694,23 @@ async function gameLoop(api, brain) {
                 const kills = me.kills || 0;
                 logError(`💀 Agent mati! Kills: ${kills}`);
                 return { result: "lose", kills };
+            }
+
+            // Detect silent move failure: if move was committed (HTTP 200) but region didn't change,
+            // reset cooldown so bot can retry immediately without wasting another 60s
+            const currentRegionId = me.regionId || region.id || "";
+            if (lastCommittedMoveToRegion && lastCommittedMoveFromRegion) {
+                if (currentRegionId === lastCommittedMoveToRegion) {
+                    // Region berubah ke tujuan → move berhasil, clear tracking
+                    lastCommittedMoveFromRegion = null;
+                    lastCommittedMoveToRegion = null;
+                } else if (currentRegionId === lastCommittedMoveFromRegion && remainingGroup1Cooldown(brain.lastActionTime) <= 0) {
+                    // Cooldown habis tapi masih di region yang sama → move "diam-diam" gagal
+                    logWarning(`⚠️ Move ke ${lastCommittedMoveToRegion} tidak terjadi (server terima tapi tidak dieksekusi). Reset cooldown untuk retry...`);
+                    brain.lastActionTime = 0; // Reset cooldown → bot langsung retry
+                    lastCommittedMoveFromRegion = null;
+                    lastCommittedMoveToRegion = null;
+                }
             }
 
             // Print status (every 30 seconds max)
@@ -2768,7 +2794,24 @@ async function gameLoop(api, brain) {
                     logSuccess(`${actionType === 'attack' ? '⚔️' : '✅'} ${desc}`);
                 }
                 brain.commitSuccess(action, commitMeta);
-                if (isGroup1 && remainingGroup1Cooldown(actionStartedAt) > 0) {
+                // Track move to detect silent server-side failure
+                if ((actionType === "move" || actionType === "flee") && currentRegionId) {
+                    lastCommittedMoveFromRegion = currentRegionId;
+                    lastCommittedMoveToRegion = action.regionId || action.targetRegionId || null;
+                }
+                // For all verifiable Group 1 actions: verify success after 3s delay
+                // If server returned 200 but didn't actually execute, reset cooldown immediately
+                const VERIFIABLE_GROUP1 = new Set(["move", "flee", "attack", "use_item", "explore"]);
+                if (isGroup1 && VERIFIABLE_GROUP1.has(actionType)) {
+                    await sleep(3000);
+                    const confirmed = await confirmActionSuccessQuick(api, GAME_ID, AGENT_ID, action, state);
+                    if (!confirmed) {
+                        logWarning(`⚠️ Aksi ${actionType} diterima server (200 OK) tapi tidak terefleksi di state. Reset cooldown untuk retry...`);
+                        brain.lastActionTime = 0;
+                        lastCommittedMoveFromRegion = null;
+                        lastCommittedMoveToRegion = null;
+                    }
+                } else if (isGroup1 && remainingGroup1Cooldown(actionStartedAt) > 0) {
                     await sleep(500);
                 } else if (actionType === "pickup") {
                     const pickupCount = commitMeta?.pickup_item_count || 1;
