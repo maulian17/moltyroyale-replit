@@ -135,6 +135,7 @@ function AgentCard({ agent, onStart, onStop, onModeChange, isLoading, onOpenLogs
             <option value="safe">Safe</option>
             <option value="balanced">Balanced</option>
             <option value="brutal">Brutal</option>
+            <option value="brutals">Brutals</option>
           </select>
           {agent.status.includes('Running') || agent.status.includes('Starting') ? (
             <Button size="sm" variant="destructive" onClick={() => onStop(agent.name)} disabled={isLoading}>
@@ -369,6 +370,7 @@ export default function App() {
                   <option value="safe">Safe</option>
                   <option value="balanced">Balanced</option>
                   <option value="brutal">Brutal</option>
+                  <option value="brutals">Brutals</option>
                 </select>
                 <Button onClick={handleSetModeAll} variant="outline" size="sm" disabled={actionLoading['mode-all']}>
                   Apply
