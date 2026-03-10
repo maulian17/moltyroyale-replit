@@ -141,9 +141,27 @@ const AGGRO_PRESETS = {
         relax_endgame_trade: true,
         roam_endgame: true,
     },
+    "brutals": {
+        hp_heal: 44,
+        hp_flee: 17,
+        combat_with_weapon: 24,
+        combat_no_weapon: 38,
+        endgame_combat_floor: 20,
+        endgame_combat_buffer: 4,
+        agent_max_hits: 4,
+        agent_max_hits_end: 5,
+        min_score_mid: 9,
+        min_score_end: 8,
+        allow_chase_1v1: true,
+        chase_min_hp: 52,
+        chase_max_target_hp: 42,
+        relax_endgame_trade: true,
+        roam_endgame: true,
+        unrestrained_range: true, // Special brutal ranged rule
+    },
 };
 
-const AGGRO = AGGRO_PRESETS[effectiveAggroMode];
+const AGGRO = AGGRO_PRESETS[effectiveAggroMode] || AGGRO_PRESETS["balanced"];
 HP_HEAL_THRESHOLD = AGGRO.hp_heal;
 HP_FLEE_THRESHOLD = AGGRO.hp_flee;
 const MODE_COMBAT_HP_WITH_WEAPON = AGGRO.combat_with_weapon;
@@ -161,6 +179,7 @@ const MODE_COVER_FIRE_HP_BUFFER = effectiveAggroMode === "safe" ? 8 : effectiveA
 const MODE_COVER_FIRE_HP_FLOOR = effectiveAggroMode === "safe" ? 18 : effectiveAggroMode === "balanced" ? 14 : 12;
 const RELAX_ENDGAME_TRADE = AGGRO.relax_endgame_trade;
 const ROAM_IN_ENDGAME = AGGRO.roam_endgame;
+const UNRESTRAINED_RANGE = AGGRO.unrestrained_range || false;
 
 // Ranged target mode
 const RANGED_TARGET_MODE = (process.env.RANGED_TARGET_MODE || "adjacent").trim().toLowerCase();
@@ -258,7 +277,7 @@ const MONSTER_DIFFICULTY = { "Wolf": 1, "Bear": 2, "Bandit": 3 };
 
 function getWeaponBonus(weapon) {
     if (!weapon) return 0;
-    return weapon.atkBonus || 0;
+    return weapon.atkBonus ?? WEAPON_PRIORITY[weapon.name || ''] ?? 0;
 }
 
 function isHunterWeapon(weapon) {
@@ -824,7 +843,7 @@ class AgentBrain {
         return false;
     }
 
-    _itemValue(item, currentWeaponBonus = 0, hpPct = 100, inventory = []) {
+    _itemValue(item, currentWeaponBonus = 0, hpPct = 100, inventory = [], equippedWeapon = null) {
         if (!item) return -999;
 
         const cat = item.category || '';
@@ -837,6 +856,8 @@ class AgentBrain {
         if (cat === "weapon") {
             const bonus = item.atkBonus ?? WEAPON_PRIORITY[name] ?? 0;
             const upgrade = bonus - currentWeaponBonus;
+
+            if (equippedWeapon && equippedWeapon.name === name) return -500;
 
             // Cek apakah ada senjata dengan nama sama atau yang sama kuatnya/lebih kuat
             for (const invItem of (inventory || [])) {
@@ -881,7 +902,7 @@ class AgentBrain {
         return 12;
     }
 
-    _chooseGroundItemAction(groundItemsHere, inventory, weaponBonus, hpPct) {
+    _chooseGroundItemAction(groundItemsHere, inventory, weaponBonus, hpPct, equippedWeapon = null) {
         if ((inventory || []).length >= 10) return null;
 
         const groundCount = groundItemsHere.length;
@@ -896,7 +917,7 @@ class AgentBrain {
 
             if (this._shouldSkipUtilityPickup(item, inventory)) continue;
 
-            let score = this._itemValue(item, weaponBonus, hpPct, inventory);
+            let score = this._itemValue(item, weaponBonus, hpPct, inventory, equippedWeapon);
             if (groundCount > 1) {
                 score += 4;
                 if (item.category === "weapon") score += 3;
@@ -1180,12 +1201,26 @@ class AgentBrain {
             const killHits = Math.max(1, Math.ceil(aHp / dmgDealt));
             const deathHits = Math.max(1, Math.ceil(myHp / Math.max(1, dmgRecv)));
             const localEnemyCount = this._countEnemiesInRegion(agents, aRegion);
+            const enemiesHereCount = this._countEnemiesInRegion(agents, myRegion);
 
             if (dmgRecv >= myHp && killHits > 1) continue;
 
+            // Brutals mode special logic: unlimited hits for ranged if safe or target is weaker
+            let isUnrestrainedRangedAttack = false;
+            if (UNRESTRAINED_RANGE && weaponRange > 0) {
+                if (aRegion !== myRegion && enemiesHereCount === 0) {
+                    // Safe at shooting distance
+                    isUnrestrainedRangedAttack = true;
+                } else if (aRegion === myRegion && (aHp < myHp || dmgRecv < dmgDealt)) {
+                    // Engaged in same region but target is weaker
+                    isUnrestrainedRangedAttack = true;
+                }
+            }
+
             const maxKillHits = gamePhase === "ENDGAME" ? MODE_AGENT_MAX_KILL_HITS_END : MODE_AGENT_MAX_KILL_HITS;
-            if (killHits > maxKillHits) continue;
-            if (deathHits < killHits) {
+            if (!isUnrestrainedRangedAttack && killHits > maxKillHits) continue;
+
+            if (!isUnrestrainedRangedAttack && deathHits < killHits) {
                 if (gamePhase !== "ENDGAME" || !RELAX_ENDGAME_TRADE) continue;
                 if (deathHits + 1 < killHits) continue;
             }
@@ -1634,7 +1669,7 @@ class AgentBrain {
 
         // Free actions (Group 2)
         if (groundItemsHere.length > 0 && !urgentEscape) {
-            const lootDecision = this._chooseGroundItemAction(groundItemsHere, inventory, weaponBonus, hpPct);
+            const lootDecision = this._chooseGroundItemAction(groundItemsHere, inventory, weaponBonus, hpPct, myWeapon);
             if (lootDecision) return lootDecision;
         }
 
@@ -2624,13 +2659,6 @@ async function confirmActionSuccessQuick(api, gameId, agentId, action, preState)
             return false;
         }
 
-        if (actionType === "explore") {
-            // Explore costs 1 EP — if EP decreased, action was executed
-            const preEp = preMe.ep ?? 0;
-            const postEp = me.ep ?? 0;
-            return postEp < preEp;
-        }
-
         return false;
     } catch (e) {
         return false;
@@ -2794,6 +2822,10 @@ async function gameLoop(api, brain) {
                     logSuccess(`${actionType === 'attack' ? '⚔️' : '✅'} ${desc}`);
                 }
                 brain.commitSuccess(action, commitMeta);
+                // [DEBUG] Log explore result to understand server response structure
+                if (actionType === "explore") {
+                    logInfo(`[DEBUG] Explore result: ${JSON.stringify(result)}`);
+                }
                 // Track move to detect silent server-side failure
                 if ((actionType === "move" || actionType === "flee") && currentRegionId) {
                     lastCommittedMoveFromRegion = currentRegionId;
@@ -2801,7 +2833,7 @@ async function gameLoop(api, brain) {
                 }
                 // For all verifiable Group 1 actions: verify success after 3s delay
                 // If server returned 200 but didn't actually execute, reset cooldown immediately
-                const VERIFIABLE_GROUP1 = new Set(["move", "flee", "attack", "use_item", "explore"]);
+                const VERIFIABLE_GROUP1 = new Set(["move", "flee", "attack", "use_item"]);
                 if (isGroup1 && VERIFIABLE_GROUP1.has(actionType)) {
                     await sleep(3000);
                     const confirmed = await confirmActionSuccessQuick(api, GAME_ID, AGENT_ID, action, state);
@@ -2811,6 +2843,18 @@ async function gameLoop(api, brain) {
                         lastCommittedMoveFromRegion = null;
                         lastCommittedMoveToRegion = null;
                     }
+                } else if (actionType === "explore" || actionType === "interact") {
+                    // WORKAROUND: Force double-send because of silent server failures.
+                    // If the first one silently failed, the second one will hit. If the first one succeeded, the second one will just error (cooldown) and be ignored.
+                    setTimeout(async () => {
+                        try {
+                            const payload = { ...action, ...(thought ? { thought } : {}) };
+                            await api._requestOnce("POST", `/games/${GAME_ID}/agents/${AGENT_ID}/action`, payload, 1, [3000, 3000]);
+                        } catch (e) {
+                            // Silently ignore any errors from the double-send
+                        }
+                    }, 3000);
+                    await sleep(1000);
                 } else if (isGroup1 && remainingGroup1Cooldown(actionStartedAt) > 0) {
                     await sleep(500);
                 } else if (actionType === "pickup") {
