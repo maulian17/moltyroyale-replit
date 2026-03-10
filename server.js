@@ -16,8 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
-
-const PORT = process.env.DASHBOARD_PORT || 3000;
+const PORT = process.env.PORT || process.env.DASHBOARD_PORT || 3000;
 const AGENTS_DIR = path.join(__dirname, 'agents');
 const CONFIG_PATH = path.join(__dirname, 'dashboard_config.json');
 
@@ -596,6 +595,15 @@ app.post('/api/config', (req, res) => {
 wss.on('connection', (ws) => {
     console.log('WebSocket client connected');
     ws.on('close', () => console.log('WebSocket client disconnected'));
+});
+
+// Serve static files dari folder dist (hasil build React/Vite)
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Route fallback untuk SPA (Single Page Application)
+app.get('*', (req, res) => {
+    // Return index.html untuk semua route yang tidak terhandle Express (misal /agent/bot123)
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // Start server
