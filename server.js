@@ -623,8 +623,9 @@ async function startServer() {
     console.log(`Frontend: http://localhost:5173 (Vite dev server)`);
     console.log('\nPress Ctrl+C to stop\n');
 
-    server.listen(PORT, () => {
-        console.log('Backend server ready');
+    // Binding eksplisit ke 0.0.0.0 agar Replit bisa me-routing HTTP traffic
+    server.listen(PORT, '0.0.0.0', () => {
+        console.log(`Backend server ready at http://0.0.0.0:${PORT}`);
     });
 }
 
