@@ -619,8 +619,8 @@ async function startServer() {
     }
     console.log('');
     
-    console.log(`\nBackend: http://localhost:${PORT}`);
-    console.log(`Frontend: http://localhost:5173 (Vite dev server)`);
+    console.log(`\nDashboard berlajan di port: ${PORT}`);
+    console.log(`Backend API & Frontend Static (Production Mode)`);
     console.log('\nPress Ctrl+C to stop\n');
 
     // Binding eksplisit ke 0.0.0.0 agar Replit bisa me-routing HTTP traffic
