@@ -2307,6 +2307,21 @@ async function setupAccount(api) {
         if (acc) {
             logSuccess(`Akun: ${acc.name} | Wins: ${acc.totalWins || 0} | Games: ${acc.totalGames || 0}`);
 
+            // Resume active game if exists
+            if (acc.currentGames && acc.currentGames.length > 0) {
+                for (const cg of acc.currentGames) {
+                    if (cg.gameStatus === 'waiting' || cg.gameStatus === 'running') {
+                        logSuccess(`🔄 Ditemukan game yang sedang berjalan! Resume ke Game: ${cg.gameId}`);
+                        GAME_ID = cg.gameId;
+                        AGENT_ID = cg.agentId;
+                        // Save to env so it persists if needed
+                        await saveEnv("GAME_ID", GAME_ID, AGENT_NAME);
+                        await saveEnv("AGENT_ID", AGENT_ID, AGENT_NAME);
+                        break;
+                    }
+                }
+            }
+
             // Check wallet address (Heartbeat requirement)
             await checkAndUpdateWallet(api);
 
@@ -2392,12 +2407,29 @@ async function findOrCreateGame(api) {
         }
 
         if (freeGames.length > 0) {
-            const game = freeGames[0];
-            GAME_ID = game.id || "";
-            logSuccess(`✅ Game dipilih: ${game.name || '???'} (ID: ${GAME_ID})`);
-            await saveEnv("GAME_ID", GAME_ID, AGENT_NAME);
-            api._fallbackGames = freeGames.slice(1).filter(g => !blockedIds.has(g.id));
-            return true;
+            // Sort by agentCount descending so all bots try to join the most populated waiting game
+            freeGames.sort((a, b) => (b.agentCount || 0) - (a.agentCount || 0));
+
+            // Find the first game that isn't full (maxAgents is usually 100)
+            let selectedGame = null;
+            for (const g of freeGames) {
+                const count = g.agentCount || 0;
+                const max = g.maxAgents || 100;
+                if (count < max) {
+                    selectedGame = g;
+                    break;
+                }
+            }
+
+            if (selectedGame) {
+                GAME_ID = selectedGame.id || "";
+                logSuccess(`✅ Game dipilih: ${selectedGame.name || '???'} (ID: ${GAME_ID}, Players: ${selectedGame.agentCount || 0}/${selectedGame.maxAgents || 100})`);
+                await saveEnv("GAME_ID", GAME_ID, AGENT_NAME);
+                api._fallbackGames = freeGames.filter(g => g.id !== GAME_ID && !blockedIds.has(g.id));
+                return true;
+            } else {
+                logWarning(`Semua waiting games (free) sudah penuh.`);
+            }
         }
     }
 
@@ -2719,9 +2751,13 @@ async function gameLoop(api, brain) {
 
             // Agent dead?
             if (!me.isAlive) {
-                const kills = me.kills || 0;
-                logError(`💀 Agent mati! Kills: ${kills}`);
-                return { result: "lose", kills };
+                if (!brain.hasLoggedDeath) {
+                    const kills = me.kills || 0;
+                    logError(`💀 Agent mati! Kills: ${kills}. Menunggu game selesai...`);
+                    brain.hasLoggedDeath = true;
+                }
+                await sleep(15000); // Wait 15s and poll again
+                continue;
             }
 
             // Detect silent move failure: if move was committed (HTTP 200) but region didn't change,
