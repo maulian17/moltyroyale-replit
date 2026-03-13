@@ -1667,6 +1667,29 @@ class AgentBrain {
             rangedCoverEscape
         );
 
+        // --- SWARM INTELLIGENCE ---
+        // Find leader among visible allies (the one with highest kills, then highest HP)
+        const allies = allVisibleAgents.filter(a => a.isAlive !== false && this._isAllyAgent(a));
+        let swarmLeader = null;
+        if (allies.length > 0) {
+            let bestLeader = allies[0];
+            for (const a of allies) {
+                const aKills = a.kills || 0;
+                const bKills = bestLeader.kills || 0;
+                if (aKills > bKills || (aKills === bKills && (a.hp || 0) > (bestLeader.hp || 0))) {
+                    bestLeader = a;
+                }
+            }
+            // I am the leader if my stats are strictly better than the best visible ally
+            const myKills = me.kills || 0;
+            const myHp = me.hp || 0;
+            if (myKills > (bestLeader.kills || 0) || (myKills === (bestLeader.kills || 0) && myHp >= (bestLeader.hp || 0))) {
+                swarmLeader = me;
+            } else {
+                swarmLeader = bestLeader;
+            }
+        }
+
         // Free actions (Group 2)
         if (groundItemsHere.length > 0 && !urgentEscape) {
             const lootDecision = this._chooseGroundItemAction(groundItemsHere, inventory, weaponBonus, hpPct, myWeapon);
@@ -1875,6 +1898,51 @@ class AgentBrain {
                     `Use ${itemName}`,
                     { mark_utility_used: true, utility_name: itemName }
                 );
+            }
+        }
+
+        // --- SWARM TACTICS: Assist Leader or Follow Leader ---
+        if (ep >= 1 && swarmLeader && swarmLeader.id !== me.id && !urgentEscape && this.gamePhase !== "ENDGAME") {
+            const leaderRegionId = swarmLeader.regionId || '';
+            const leaderName = swarmLeader.name || 'Leader';
+            
+            // If in the same region, look for enemies to assist attacking
+            if (regionId === leaderRegionId) {
+                if (ep >= 2 && enemiesHere.length > 0) {
+                    // Try to pick the enemy with least HP to focus fire
+                    let targetEnemy = enemiesHere[0];
+                    for (const e of enemiesHere) {
+                        if ((e.hp || 100) < (targetEnemy.hp || 100)) targetEnemy = e;
+                    }
+                    logCombat(`🤜 Ikut menyerang ${targetEnemy.name} (Assist Leader ${leaderName})`);
+                    return this._decision(
+                        { type: "attack", targetId: targetEnemy.id, targetType: "agent" },
+                        {
+                            reasoning: `Swarm intelligence: Membantu leader ${leaderName} menyerang ${targetEnemy.name}`,
+                            plannedAction: `Assist serang ${targetEnemy.name}`
+                        },
+                        `Assist Leader (${targetEnemy.name})`
+                    );
+                }
+            } else {
+                // If not in same region, check if leader's region is adjacent and safe to move
+                const adjacentLeaderRegion = connected.find(c => {
+                    const cid = typeof c === 'object' ? (c.id || '') : c;
+                    return cid === leaderRegionId;
+                });
+                if (adjacentLeaderRegion) {
+                    const lrid = typeof adjacentLeaderRegion === 'string' ? adjacentLeaderRegion : (adjacentLeaderRegion.id || adjacentLeaderRegion);
+                    const lrname = this._resolveRegionName(adjacentLeaderRegion, lrid, visibleRegions);
+                    logMove(`🏃 Follow Leader ${leaderName} ke region ${lrname}`);
+                    return this._decision(
+                        { type: "move", regionId: lrid },
+                        {
+                            reasoning: `Swarm intelligence: Bergerak mengikuti leader berkelompok ke ${lrname}`,
+                            plannedAction: `Follow ${leaderName} ke ${lrname}`
+                        },
+                        `Follow Leader → ${lrname}`
+                    );
+                }
             }
         }
 
