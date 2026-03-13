@@ -11,6 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +20,8 @@ dotenv.config();
 const PORT = process.env.PORT || process.env.DASHBOARD_PORT || 3000;
 const AGENTS_DIR = path.join(__dirname, 'agents');
 const CONFIG_PATH = path.join(__dirname, 'dashboard_config.json');
+const USERS_PATH = path.join(__dirname, 'users.json');
+const SESSIONS = new Map(); // In-memory session storage
 
 const ALLOWED_MODES = ['safe', 'balanced', 'brutal', 'brutals'];
 
@@ -79,6 +82,80 @@ function saveEnvFile(filePath, data) {
     } catch (e) {
         console.error(`Error saving ${filePath}:`, e.message);
         return false;
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  AUTHENTICATION UTILITIES
+// ══════════════════════════════════════════════════════════════
+
+function hashPassword(password) {
+    return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+function loadUsers() {
+    return loadJson(USERS_PATH, { users: [] });
+}
+
+function saveUsers(usersData) {
+    return saveJson(USERS_PATH, usersData);
+}
+
+function generateSessionToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+function getSession(token) {
+    return SESSIONS.get(token);
+}
+
+function createSession(username) {
+    const token = generateSessionToken();
+    SESSIONS.set(token, { username, createdAt: Date.now() });
+    return token;
+}
+
+function deleteSession(token) {
+    return SESSIONS.delete(token);
+}
+
+function authMiddleware(req, res, next) {
+    const token = req.headers['authorization']?.replace('Bearer ', '');
+    if (!token) {
+        return res.status(401).json({ error: 'No token provided' });
+    }
+    const session = getSession(token);
+    if (!session) {
+        return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+    req.user = session;
+    next();
+}
+
+function adminMiddleware(req, res, next) {
+    if (!req.user || req.user.username !== 'admin') {
+        return res.status(403).json({ error: 'Admin access required' });
+    }
+    next();
+}
+
+function initAdminAccount() {
+    const usersData = loadUsers();
+    const adminExists = usersData.users.find(u => u.username === 'admin');
+    
+    if (!adminExists) {
+        const defaultPassword = 'admin123';
+        usersData.users.push({
+            username: 'admin',
+            password: hashPassword(defaultPassword),
+            role: 'admin',
+            createdAt: Date.now(),
+        });
+        saveUsers(usersData);
+        console.log('✅ Default admin account created');
+        console.log(`   Username: admin`);
+        console.log(`   Password: ${defaultPassword}`);
+        console.log('   ⚠️  Please change the default password after first login!\n');
     }
 }
 
@@ -591,6 +668,157 @@ app.post('/api/config', (req, res) => {
     res.json({ success });
 });
 
+// ══════════════════════════════════════════════════════════════
+//  AUTHENTICATION ROUTES
+// ══════════════════════════════════════════════════════════════
+
+// Login
+app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password required' });
+    }
+    
+    const usersData = loadUsers();
+    const user = usersData.users.find(u => u.username === username);
+    if (!user) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    if (user.password !== hashPassword(password)) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    const token = createSession(username);
+    res.json({ token, username, isAdmin: username === 'admin' });
+});
+
+// Logout
+app.post('/api/auth/logout', authMiddleware, (req, res) => {
+    const token = req.headers['authorization']?.replace('Bearer ', '');
+    deleteSession(token);
+    res.json({ success: true });
+});
+
+// Change password
+app.post('/api/auth/change-password', authMiddleware, (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Current and new password required' });
+    }
+    if (newPassword.length < 4) {
+        return res.status(400).json({ error: 'New password must be at least 4 characters' });
+    }
+    
+    const usersData = loadUsers();
+    const user = usersData.users.find(u => u.username === req.user.username);
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (user.password !== hashPassword(currentPassword)) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    
+    user.password = hashPassword(newPassword);
+    saveUsers(usersData);
+    
+    res.json({ success: true });
+});
+
+// Get current user
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+    res.json({ username: req.user.username, isAdmin: req.user.username === 'admin' });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  ADMIN ROUTES (Admin Only)
+// ══════════════════════════════════════════════════════════════
+
+// Get all users (admin only)
+app.get('/api/admin/users', authMiddleware, adminMiddleware, (req, res) => {
+    const usersData = loadUsers();
+    const users = usersData.users.map(u => ({
+        username: u.username,
+        role: u.role || 'user',
+        createdAt: u.createdAt,
+    }));
+    res.json({ users });
+});
+
+// Create new user (admin only)
+app.post('/api/admin/users', authMiddleware, adminMiddleware, (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password required' });
+    }
+    if (password.length < 4) {
+        return res.status(400).json({ error: 'Password must be at least 4 characters' });
+    }
+    
+    const usersData = loadUsers();
+    if (usersData.users.find(u => u.username === username)) {
+        return res.status(400).json({ error: 'Username already exists' });
+    }
+    
+    usersData.users.push({
+        username,
+        password: hashPassword(password),
+        role: 'user',
+        createdAt: Date.now(),
+    });
+    saveUsers(usersData);
+    
+    res.json({ success: true, username });
+});
+
+// Delete user (admin only)
+app.delete('/api/admin/users/:username', authMiddleware, adminMiddleware, (req, res) => {
+    const { username } = req.params;
+    
+    if (username === 'admin') {
+        return res.status(400).json({ error: 'Cannot delete admin account' });
+    }
+    
+    const usersData = loadUsers();
+    const userIndex = usersData.users.findIndex(u => u.username === username);
+    
+    if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    usersData.users.splice(userIndex, 1);
+    saveUsers(usersData);
+    
+    res.json({ success: true });
+});
+
+// Reset user password (admin only)
+app.post('/api/admin/users/:username/reset-password', authMiddleware, adminMiddleware, (req, res) => {
+    const { username } = req.params;
+    const { newPassword } = req.body;
+    
+    if (!newPassword || newPassword.length < 4) {
+        return res.status(400).json({ error: 'Password must be at least 4 characters' });
+    }
+    
+    if (username === 'admin') {
+        return res.status(400).json({ error: 'Cannot reset admin password this way' });
+    }
+    
+    const usersData = loadUsers();
+    const user = usersData.users.find(u => u.username === username);
+    
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    user.password = hashPassword(newPassword);
+    saveUsers(usersData);
+    
+    res.json({ success: true });
+});
+
 // WebSocket
 wss.on('connection', (ws) => {
     console.log('WebSocket client connected');
@@ -611,14 +839,17 @@ async function startServer() {
     const count = agentManager.loadAgents();
     console.log(`\n🎮 Molty Royale Dashboard`);
     console.log(`Loaded ${count} agent(s) from ${AGENTS_DIR}`);
-    
+
     // Debug: log all agents
     console.log('\n📋 Agents loaded:');
     for (const [name, agent] of agentManager.agents) {
         console.log(`  - ${name}: API_KEY=${agent.apiKeyPresent ? '✅' : '❌'}, Mode=${agent.mode}`);
     }
     console.log('');
-    
+
+    // Initialize admin account
+    initAdminAccount();
+
     console.log(`\nDashboard berlajan di port: ${PORT}`);
     console.log(`Backend API & Frontend Static (Production Mode)`);
     console.log('\nPress Ctrl+C to stop\n');

@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { Play, Square, RefreshCw, Trash2, Activity, Trophy, Skull, Coins, TrendingUp, Users, Power } from 'lucide-react'
+import { Play, Square, RefreshCw, Trash2, Activity, Trophy, Skull, Coins, TrendingUp, Users, Power, LogOut, UserCog } from 'lucide-react'
 import { Button, Card, CardContent, Badge } from './components/ui.jsx'
 import { cn } from './lib/utils.js'
+import Login from './components/Login.jsx'
+import AccountSettings from './components/AccountSettings.jsx'
+import UserManagement from './components/UserManagement.jsx'
 
 function StatCard({ icon: Icon, label, value, subValue, color = "text-primary" }) {
   return (
@@ -183,6 +186,64 @@ export default function App() {
   const logsEndRef = useRef(null)
   const logsContainerRef = useRef(null)
 
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [username, setUsername] = useState('')
+  const [showAccountSettings, setShowAccountSettings] = useState(false)
+  const [showUserManagement, setShowUserManagement] = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  // Check authentication on mount
+  useEffect(() => {
+    checkAuth()
+  }, [])
+
+  async function checkAuth() {
+    const token = localStorage.getItem('authToken')
+    const storedUsername = localStorage.getItem('username')
+    
+    if (!token) {
+      setAuthLoading(false)
+      return
+    }
+
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      
+      if (res.ok) {
+        const data = await res.json()
+        setUsername(data.username)
+        setIsAuthenticated(true)
+      } else if (storedUsername) {
+        // Fallback to stored username if session expired
+        setUsername(storedUsername)
+        setIsAuthenticated(true)
+      }
+    } catch (e) {
+      console.error('Auth check error:', e)
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  function handleLogin(loggedInUsername) {
+    setUsername(loggedInUsername)
+    setIsAuthenticated(true)
+  }
+
+  function handleLogout() {
+    setIsAuthenticated(false)
+    setUsername('')
+    setShowAccountSettings(false)
+  }
+
+  function handleOpenUserManagement() {
+    setShowAccountSettings(false)
+    setShowUserManagement(true)
+  }
+
   useEffect(() => {
     fetchAgents()
     const interval = setInterval(fetchAgents, 3000)
@@ -243,13 +304,20 @@ export default function App() {
   async function apiCall(method, path, body = null, actionKey = null) {
     try {
       if (actionKey) setActionLoading(prev => ({ ...prev, [actionKey]: true }))
-      
-      const options = { method, headers: { 'Content-Type': 'application/json' } }
+
+      const token = localStorage.getItem('authToken')
+      const options = { 
+        method, 
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }),
+        } 
+      }
       if (body) options.body = JSON.stringify(body)
       const res = await fetch(path, options)
       const result = await res.json()
       console.log(`API ${method} ${path}:`, result)
-      
+
       setTimeout(fetchAgents, 300)
       return result
     } catch (e) {
@@ -303,6 +371,18 @@ export default function App() {
   const totalBalance = agents.reduce((sum, a) => sum + (a.stats?.balance || 0), 0)
   const winRate = totalWins + totalLosses > 0 ? ((totalWins / (totalWins + totalLosses)) * 100).toFixed(1) : 0
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -326,10 +406,20 @@ export default function App() {
                 <p className="text-xs text-muted-foreground">Agent Management Console</p>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={fetchAgents}>
-              <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="hidden md:flex items-center gap-2 mr-4 px-3 py-1.5 rounded-md bg-secondary/50">
+                <UserCog className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">{username}</span>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowAccountSettings(true)}>
+                <UserCog className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Account</span>
+              </Button>
+              <Button variant="outline" size="sm" onClick={fetchAgents}>
+                <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+                Refresh
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -411,9 +501,9 @@ export default function App() {
                   <p className="text-xs text-muted-foreground">Real-time output from agent process</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => setAutoScroll(!autoScroll)}
                     title={autoScroll ? "Disable auto-scroll" : "Enable auto-scroll"}
                   >
@@ -428,7 +518,7 @@ export default function App() {
                   </Button>
                 </div>
               </div>
-              <div 
+              <div
                 ref={logsContainerRef}
                 onScroll={handleLogsScroll}
                 className="p-4 h-[60vh] overflow-y-auto bg-gray-900 text-gray-100 font-mono text-xs"
@@ -446,8 +536,8 @@ export default function App() {
               </div>
               {!autoScroll && (
                 <div className="absolute bottom-20 right-8">
-                  <Button 
-                    variant="default" 
+                  <Button
+                    variant="default"
                     size="sm"
                     onClick={() => {
                       setAutoScroll(true);
@@ -460,6 +550,23 @@ export default function App() {
               )}
             </div>
           </div>
+        )}
+
+        {/* Account Settings Modal */}
+        {showAccountSettings && (
+          <AccountSettings
+            username={username}
+            onClose={() => setShowAccountSettings(false)}
+            onLogout={handleLogout}
+            onOpenUserManagement={handleOpenUserManagement}
+          />
+        )}
+
+        {/* User Management Modal */}
+        {showUserManagement && (
+          <UserManagement
+            onClose={() => setShowUserManagement(false)}
+          />
         )}
       </div>
     </div>

@@ -2006,7 +2006,7 @@ class AgentBrain {
         }
 
         // Hunter mode: push to enemy region
-        if (ep >= 1 && midHunterMode && enemiesHere.length === 0) {
+        if (ep >= EP_REST_THRESHOLD && midHunterMode && enemiesHere.length === 0) {
             const hunterRegion = this._pickMidHunterRegion(connected, visibleRegions, allVisibleAgents);
             if (hunterRegion) {
                 const [hRid, hRname, hTargetNote] = hunterRegion;
@@ -2057,7 +2057,7 @@ class AgentBrain {
         }
 
         // Chase 1v1
-        if (ep >= 1 && ALLOW_CHASE_1V1 && this.gamePhase === "MID" && enemiesHere.length === 0 && weaponBonus > 0 && hpPct >= MODE_CHASE_MIN_HP) {
+        if (ep >= EP_REST_THRESHOLD && ALLOW_CHASE_1V1 && this.gamePhase === "MID" && enemiesHere.length === 0 && weaponBonus > 0 && hpPct >= MODE_CHASE_MIN_HP) {
             const chaseRegion = this._pickChaseRegion(connected, visibleRegions, allVisibleAgents);
             if (chaseRegion) {
                 const [cRid, cRname, cTargetName] = chaseRegion;
@@ -2074,7 +2074,7 @@ class AgentBrain {
         }
 
         // Explore
-        if (ep >= 1 && !midHunterMode && !this.exploredRegions.has(regionId) && this.gamePhase !== "ENDGAME" && enemiesHere.length === 0) {
+        if (ep >= EP_REST_THRESHOLD && !midHunterMode && !this.exploredRegions.has(regionId) && this.gamePhase !== "ENDGAME" && enemiesHere.length === 0) {
             logAction(`Explore region ${region.name || regionId}`);
             return this._decision(
                 { type: "explore" },
@@ -2088,7 +2088,7 @@ class AgentBrain {
         }
 
         // Move to better weapon
-        if (ep >= 1 && !midHunterMode && this.gamePhase !== "ENDGAME" && enemiesHere.length === 0) {
+        if (ep >= EP_REST_THRESHOLD && !midHunterMode && this.gamePhase !== "ENDGAME" && enemiesHere.length === 0) {
             const weaponRegion = this._findBetterWeaponRegion(
                 visibleItems, connected, visibleRegions, weaponBonus, regionId
             );
@@ -2107,7 +2107,7 @@ class AgentBrain {
         }
 
         // Move to strategic region
-        if (ep >= 1 && (this.gamePhase !== "ENDGAME" || ROAM_IN_ENDGAME)) {
+        if (ep >= EP_REST_THRESHOLD && (this.gamePhase !== "ENDGAME" || ROAM_IN_ENDGAME)) {
             const targetRegion = this._pickMoveTarget(connected, visibleRegions, allVisibleAgents);
             if (targetRegion) {
                 const rid = typeof targetRegion === 'string' ? targetRegion : (targetRegion.id || targetRegion);
